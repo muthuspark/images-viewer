@@ -12,6 +12,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:release-version": "node --test test/release-version.test.mjs",
+    "validate:release-version": "node scripts/validate-release-version.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

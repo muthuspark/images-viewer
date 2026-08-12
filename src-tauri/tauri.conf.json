@@ -29,7 +29,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "icon": ["icons/icon.png"]
+    "targets": ["appimage", "deb"],
+    "homepage": "https://github.com/muthuspark/images-viewer",
+    "icon": ["icons/icon.png"],
+    "copyright": "Copyright © 2026 Muthukrishnan",
+    "license": "MIT",
+    "category": "Photography",
+    "shortDescription": "Browse local image folders in a minimal desktop gallery.",
+    "longDescription": "Image Viewer is a minimal Linux desktop gallery for browsing images directly from local folders."
   }
 }

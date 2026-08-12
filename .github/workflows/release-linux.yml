@@ -1,0 +1,155 @@
+name: Release Linux
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish Linux bundles
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Validate release tag
+        run: npm run validate:release-version -- "${GITHUB_REF_NAME}"
+
+      - name: Check locked Rust dependencies
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Remove a stale draft from a failed run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          endpoint="repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+          if gh api "${endpoint}" > "${RUNNER_TEMP}/existing-release.json" 2>/dev/null; then
+            if [[ "$(jq -r '.draft' "${RUNNER_TEMP}/existing-release.json")" != "true" ]]; then
+              echo "A published release already exists for ${GITHUB_REF_NAME}." >&2
+              exit 1
+            fi
+
+            release_id="$(jq -r '.id' "${RUNNER_TEMP}/existing-release.json")"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}"
+          fi
+
+      - name: Build bundles and create draft release
+        id: tauri
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Image Viewer ${{ github.ref_name }}
+          releaseBody: |
+            Linux x86-64 release.
+
+            - AppImage: portable build for supported Linux desktops
+            - Debian package: installer for Debian, Ubuntu, Mint, and derivatives
+
+            Verify downloads with `SHA256SUMS` before running or installing them.
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          args: --bundles appimage,deb -- --locked
+
+      - name: Generate installer checksums
+        id: artifacts
+        env:
+          ARTIFACT_PATHS_JSON: ${{ steps.tauri.outputs.artifactPaths }}
+        run: |
+          mapfile -t artifacts < <(jq -r '.[]' <<< "${ARTIFACT_PATHS_JSON}")
+          if [[ "${#artifacts[@]}" -ne 2 ]]; then
+            echo "Expected exactly two Tauri artifacts, found ${#artifacts[@]}." >&2
+            exit 1
+          fi
+
+          appimage_count=0
+          deb_count=0
+          : > SHA256SUMS
+
+          for artifact in "${artifacts[@]}"; do
+            if [[ ! -f "${artifact}" ]]; then
+              echo "Tauri artifact does not exist: ${artifact}" >&2
+              exit 1
+            fi
+
+            case "${artifact}" in
+              *.AppImage) appimage_count=$((appimage_count + 1)) ;;
+              *.deb) deb_count=$((deb_count + 1)) ;;
+              *)
+                echo "Unexpected Tauri artifact: ${artifact}" >&2
+                exit 1
+                ;;
+            esac
+
+            digest="$(sha256sum "${artifact}" | cut -d ' ' -f 1)"
+            printf '%s  %s\n' "${digest}" "$(basename "${artifact}")" >> SHA256SUMS
+          done
+
+          if [[ "${appimage_count}" -ne 1 || "${deb_count}" -ne 1 ]]; then
+            echo "Expected one AppImage and one Debian package." >&2
+            exit 1
+          fi
+
+          sort -k 2 SHA256SUMS -o SHA256SUMS
+          {
+            echo "paths<<EOF"
+            printf '%s\n' "${artifacts[@]}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Attest Linux installers
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ steps.artifacts.outputs.paths }}
+
+      - name: Upload checksum manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" SHA256SUMS --clobber
+
+      - name: Publish completed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false
