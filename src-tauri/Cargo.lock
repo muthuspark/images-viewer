@@ -1444,6 +1444,7 @@ dependencies = [
 name = "image-viewer"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "serde",
  "tauri",
  "tauri-build",

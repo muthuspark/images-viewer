@@ -22,27 +22,20 @@ fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-#[tauri::command]
-fn list_roots() -> Vec<FolderEntry> {
-    #[cfg(target_os = "windows")]
-    {
-        return (b'A'..=b'Z')
-            .map(|letter| format!("{}:\\", letter as char))
-            .filter(|path| Path::new(path).exists())
-            .map(|path| FolderEntry {
-                name: path.clone(),
-                path,
-            })
-            .collect();
+fn home_root(path: PathBuf) -> FolderEntry {
+    FolderEntry {
+        name: "Home".to_string(),
+        path: display_path(&path),
     }
+}
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        vec![FolderEntry {
-            name: "/".to_string(),
-            path: "/".to_string(),
-        }]
-    }
+#[tauri::command]
+fn list_roots() -> Result<Vec<FolderEntry>, String> {
+    let home = dirs::home_dir()
+        .filter(|path| path.is_dir())
+        .ok_or_else(|| "The home folder is unavailable.".to_string())?;
+
+    Ok(vec![home_root(home)])
 }
 
 #[tauri::command]
@@ -98,4 +91,19 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![list_roots, list_directory])
         .run(tauri::generate_context!())
         .expect("error while running image viewer");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn home_root_uses_a_friendly_label_and_preserves_the_path() {
+        let path = PathBuf::from("/home/example");
+
+        let root = home_root(path.clone());
+
+        assert_eq!(root.name, "Home");
+        assert_eq!(root.path, display_path(&path));
+    }
 }

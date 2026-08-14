@@ -6,7 +6,7 @@ A minimal desktop gallery for browsing images directly from local folders. The i
 
 - Browse the local filesystem with an expandable folder tree.
 - View JPEG, PNG, WebP, GIF, BMP, and SVG images.
-- Resize thumbnails with the mouse wheel over the gallery.
+- Resize thumbnails with the compact + and − controls while the mouse wheel scrolls normally.
 - Load thumbnails lazily for responsive browsing.
 - Run as a native Linux desktop application through Tauri.
 
