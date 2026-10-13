@@ -1,115 +1,75 @@
 # Image Viewer
 
-A minimal desktop gallery for browsing images directly from local folders. The interface keeps filesystem navigation compact and gives the image grid most of the available space.
+A minimal native desktop gallery written in Rust with [GPUI](https://www.gpui.rs/). Photos occupy the main canvas, with a compact expandable folder tree alongside it. The application renders directly through GPUI, without a browser or WebView.
 
 ## Features
 
-- Browse the local filesystem with an expandable folder tree.
+- Browse local folders from Home, with expandable filesystem navigation.
+- Selecting a folder includes its images and images up to four subfolder levels below it (selected folder = depth 0; depth 4 included; depth 5 excluded). Directory symlinks are skipped. Unavailable subfolders are skipped while accessible images remain visible.
 - View JPEG, PNG, WebP, GIF, BMP, and SVG images.
-- Resize thumbnails with the compact + and − controls while the mouse wheel scrolls normally.
-- Load thumbnails lazily for responsive browsing.
-- Run as a native Linux desktop application through Tauri.
-
-## Download
-
-Versioned Linux x86-64 builds are available from [GitHub Releases](https://github.com/muthuspark/images-viewer/releases). Each release provides:
-
-- An AppImage for portable use across supported Linux desktops.
-- A Debian package for Debian, Ubuntu, Mint, and derivatives.
-- A `SHA256SUMS` manifest covering both installers.
-
-This project does not currently distribute macOS, Windows, RPM, Snap, Flatpak, ARM, or auto-update packages.
-
-### Verify a download
-
-Download `SHA256SUMS` and the installer into the same directory, then run:
-
-```sh
-sha256sum --check --ignore-missing SHA256SUMS
-```
-
-GitHub also records build-provenance attestations for both installers. With the GitHub CLI installed, an installer can be verified against this repository with:
-
-```sh
-gh attestation verify ./*.AppImage --repo muthuspark/images-viewer
-```
-
-### Run the AppImage
-
-```sh
-chmod +x ./*.AppImage
-./*.AppImage
-```
-
-Some distributions require the FUSE 2 compatibility package to run AppImages. The AppImage can instead be started without FUSE using its `--appimage-extract-and-run` option.
-
-### Install the Debian package
-
-```sh
-sudo apt install ./*_amd64.deb
-```
+- Resize thumbnails with + and −; the mouse wheel scrolls normally.
+- Virtualized gallery rows, bounded memory caches, and reusable 512-pixel still thumbnails on disk.
+- Directory scans and image decoding run in the background. Selecting another folder cancels the previous recursive scan.
+- Click an image to view it fitted to the window. Escape or × closes it; Left and Right move between images.
+- Tab and Shift+Tab navigate controls; Enter opens a folder or image. + and − resize thumbnails; F5 refreshes the selected folder.
+- Optionally pass a folder path when starting the application.
 
 ## Development
 
-Install [Node.js](https://nodejs.org/), [Rust](https://www.rust-lang.org/tools/install), and the [Tauri system prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform. Then run:
+Install a current stable Rust toolchain. On Debian/Ubuntu, install the native dependencies:
 
 ```sh
-npm install
-npm run tauri dev
+sudo apt install build-essential pkg-config cmake nasm clang libasound2-dev \
+  libfontconfig1-dev libfreetype6-dev libwayland-dev libx11-xcb-dev \
+  libxkbcommon-x11-dev libvulkan-dev libssl-dev libxcb-shape0-dev libxcb-xfixes0-dev
+cargo run --locked
+# Or start in a specific folder:
+cargo run --locked -- /path/to/photos
 ```
 
-To verify the frontend and Rust application without creating an installer:
+CMake, a C compiler, and NASM are needed to build the bundled static libjpeg-turbo library on x86-64. The resulting executable requires no separate TurboJPEG installation.
+
+Linux requires a working X11 or Wayland session and a Vulkan-capable graphics driver. Linux is the supported packaging target; other platforms are not validated.
 
 ```sh
-npm run build
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo build --release --locked
 ```
 
-## Production build
+The executable is `target/release/image-viewer`. Node.js, React, Tauri, and WebKit are no longer required.
 
-Create the supported Linux AppImage and Debian bundles with:
+## Thumbnail performance
+
+Only visible rows request image previews. At most four thumbnail jobs run concurrently, and evicted queued jobs skip decoding. Resizing the grid preserves decoded previews. JPEG previews use a SIMD-enabled libjpeg-turbo decoder with fractional downscaling during decoding. Other formats and unsupported JPEGs use the standard image decoder. Image codecs are optimized even in development builds.
+
+Generated raster thumbnails are saved under `$XDG_CACHE_HOME/image-viewer/thumbnails-v1` (usually `~/.cache/image-viewer/thumbnails-v1`). The cache key includes the source path, size, and modification time. Changed files regenerate their previews; corrupt or unavailable cache files fall back to the source image. The disk cache is periodically trimmed around 512 MiB and can be deleted safely. SVG previews use GPUI's loader.
+
+The first visit still decodes uncached source images, with JPEGs decoded near the required thumbnail resolution. Later visits, including after restarting the app, load the small saved previews. For the fastest initial decoding, use `cargo run --release --locked -- /path/to/photos`.
+
+Run the synthetic 24-megapixel JPEG timing check with:
 
 ```sh
-npm run tauri build
+cargo test --locked benchmark_cold_and_warm -- --ignored --nocapture
 ```
 
-The generated bundles are written beneath `src-tauri/target/release/bundle/`.
+## Linux packages
 
-## Maintainer release process
+```sh
+scripts/package-linux.sh
+# To also generate an AppImage using linuxdeploy:
+LINUXDEPLOY=/absolute/path/linuxdeploy-x86_64.AppImage scripts/package-linux.sh
+```
 
-Releases use stable semantic versions and immutable annotated tags in the form `v<major>.<minor>.<patch>`. Before creating a tag:
+Packages and `SHA256SUMS` are written to `target/bundle/`. Install the Debian package with `sudo apt install ./target/bundle/*.deb`, or make the AppImage executable and run it. The AppImage supports `--appimage-extract-and-run` on systems without FUSE. Both formats still require a compatible graphics driver.
 
-1. Choose the next version and update `package.json` plus `package-lock.json`:
+Versioned builds are published to [GitHub Releases](https://github.com/muthuspark/images-viewer/releases) when a stable `v<major>.<minor>.<patch>` tag matching `Cargo.toml` is pushed. Set the version in `Cargo.toml`, refresh `Cargo.lock` with `cargo check`, run the checks above, then commit and tag the release. Never reuse a published tag. Releases contain an AppImage, a Debian installer, checksums, and GitHub provenance attestations.
 
-   ```sh
-   npm version 0.2.0 --no-git-tag-version
-   ```
-
-2. Set the same version in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then refresh the application entry in `Cargo.lock`:
-
-   ```sh
-   cargo check --manifest-path src-tauri/Cargo.toml
-   ```
-
-3. Validate all five version declarations and run the local checks:
-
-   ```sh
-   npm run validate:release-version -- v0.2.0
-   npm run test:release-version
-   npm run build
-   cargo check --manifest-path src-tauri/Cargo.toml --locked
-   npm run tauri build -- --bundles appimage,deb -- --locked
-   ```
-
-4. Commit the version changes, merge them to `main`, and create the release tag on that commit:
-
-   ```sh
-   git tag -a v0.2.0 -m "Image Viewer v0.2.0"
-   git push origin v0.2.0
-   ```
-
-The tag triggers the Linux release workflow. It publishes the GitHub Release only after both installers, their checksums, and their provenance attestations succeed. Never move, delete, or reuse a pushed release tag; fix a failed shared release with a new patch version.
+Verify a download with `sha256sum --check --ignore-missing SHA256SUMS`. Provenance can be checked with `gh attestation verify <installer> --repo muthuspark/images-viewer`.
 
 ## License
 
-This project is available under the [MIT License](LICENSE).
+[MIT](LICENSE). The image-cache implementation adapts the Apache-2.0 GPUI example; see [NOTICE](NOTICE).
+
+JPEG thumbnail decoding uses libjpeg-turbo. This software is based in part on the work of the Independent JPEG Group. See the bundled [libjpeg-turbo licenses](assets/licenses/libjpeg-turbo-LICENSE.md).

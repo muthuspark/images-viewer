@@ -18,17 +18,17 @@ The release system SHALL start Linux distribution builds only for an explicitly 
 - **THEN** the workflow fails before building or publishing installers
 
 ### Requirement: Reproducible Linux build inputs
-The release system SHALL build from the tagged commit on an Ubuntu 22.04 x86-64 runner using the committed npm and Cargo lockfiles.
+The release system SHALL build from the tagged commit on an Ubuntu 22.04 x86-64 runner using the committed Cargo lockfile.
 
 #### Scenario: Locked dependency installation
-- **WHEN** the release job prepares the frontend and Rust build
-- **THEN** it installs npm dependencies with lockfile enforcement and uses the committed Cargo lockfile
+- **WHEN** the release job prepares the native Rust build
+- **THEN** it builds with `cargo build --release --locked` using the committed Cargo lockfile
 
 ### Requirement: Supported Linux artifacts
-Each successful release SHALL provide an x86-64 AppImage and an x86-64 Debian package built by Tauri from the same tagged commit.
+Each successful release SHALL provide an x86-64 AppImage and an x86-64 Debian package built from the native GPUI executable from the same tagged commit.
 
 #### Scenario: Successful bundle build
-- **WHEN** Tauri completes the release build
+- **WHEN** the native Linux packaging script completes the release build
 - **THEN** both an AppImage artifact and a Debian package artifact exist and contain the validated application version in their release metadata
 
 ### Requirement: Atomic public release

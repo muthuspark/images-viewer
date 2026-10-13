@@ -14,3 +14,6 @@ src-tauri/gen/schemas/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Native GPUI build output
+/target/

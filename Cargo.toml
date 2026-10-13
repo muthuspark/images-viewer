@@ -1,0 +1,45 @@
+[package]
+name = "image-viewer"
+version = "0.2.0"
+edition = "2024"
+description = "A minimal native GPUI gallery for local images"
+authors = ["Muthukrishnan"]
+license = "MIT"
+repository = "https://github.com/muthuspark/images-viewer"
+
+[dependencies]
+gpui = "=0.2.2"
+dirs = "6"
+futures = "0.3"
+image = "0.25"
+smallvec = "1"
+async-lock = "3"
+blake3 = "1"
+tempfile = "3"
+# Build a static libjpeg-turbo with SIMD enabled.
+turbojpeg = { version = "1.5", default-features = false, features = ["cmake", "require-simd"] }
+# GPUI's xattr 0.2 dependency requires ENOATTR, removed in newer libc.
+libc = "=0.2.186"
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+lto = "thin"
+strip = true
+
+# Image decoding must stay fast when running `cargo run` during development.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.turbojpeg]
+opt-level = 3
+[profile.dev.package.turbojpeg-sys]
+opt-level = 3

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Image Viewer
+Comment=Browse images in local folders
+Exec=image-viewer
+Icon=image-viewer
+Terminal=false
+Categories=Graphics;Photography;Viewer;
